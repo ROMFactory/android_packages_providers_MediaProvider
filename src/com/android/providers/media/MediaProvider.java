@@ -67,6 +67,7 @@ import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.RemoteException;
 import android.os.SystemClock;
+import android.os.SystemProperties;
 import android.os.storage.StorageManager;
 import android.os.storage.StorageVolume;
 import android.preference.PreferenceManager;
@@ -252,6 +253,12 @@ public class MediaProvider extends ContentProvider {
                     // If secondary external storage is ejected, then we delete all database
                     // entries for that storage from the files table.
                     synchronized (mDatabases) {
+                        // Don't delete entries if the eject is due to a shutdown
+                        if (!"".equals(SystemProperties.get("sys.shutdown.requested"))) {
+                            Log.d(TAG, "not deleting entries on eject due to shtudown");
+                            return;
+                        }
+
                         DatabaseHelper database = mDatabases.get(EXTERNAL_VOLUME);
                         Uri uri = Uri.parse("file://" + storage.getPath());
                         if (database != null) {
@@ -4610,7 +4617,8 @@ public class MediaProvider extends ContentProvider {
                 (c.checkCallingOrSelfUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 == PackageManager.PERMISSION_GRANTED);
 
-        if (path.startsWith(sExternalPath) || path.startsWith(sLegacyPath)) {
+        if (path.startsWith(sExternalPath) || path.startsWith(sLegacyPath)
+                || isSecondaryExternalPath(path)) {
             if (!readGranted) {
                 c.enforceCallingOrSelfPermission(
                         READ_EXTERNAL_STORAGE, "External path: " + path);
@@ -4632,12 +4640,6 @@ public class MediaProvider extends ContentProvider {
         } else if (isWrite) {
             // don't write to non-cache, non-sdcard files.
             throw new FileNotFoundException("Can't access " + file);
-        } else if (isSecondaryExternalPath(path)) {
-            // read access is OK with the appropriate permission
-            if (!readGranted) {
-                c.enforceCallingOrSelfPermission(
-                        READ_EXTERNAL_STORAGE, "External path: " + path);
-            }
         } else {
             checkWorldReadAccess(path);
         }
